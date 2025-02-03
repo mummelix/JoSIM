@@ -382,7 +382,7 @@ void Output::format_raw(const std::string& filename, bool argmin,
 }
 
 void Output::format_cout(const bool& argMin) {
-  if (!argMin) {
+  /*if (!argMin)*/ {// __JFM local
     for (int64_t i = 0; i < traces.size() - 1; ++i) {
       std::cout << traces.at(i).name_ << " ";
     }
