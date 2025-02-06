@@ -150,6 +150,9 @@ void Simulation::trans_sim(Matrix &mObj) {
 }
 
 void Simulation::reduce_step(Input &iObj, Matrix &mObj) {
+  std::ostringstream warning;
+  warning << std::scientific << std::setprecision(6) << "Simulation: Reducing step size from " << iObj.transSim.tstep() << " to " << iObj.transSim.tstep() / 2;
+  Errors::warning_message(warning.str());
   iObj.transSim.tstep(iObj.transSim.tstep() / 2);
   bool tempMinOut = iObj.argMin;
   if (!iObj.argMin) iObj.argMin = true;
