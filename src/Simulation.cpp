@@ -219,7 +219,7 @@ void Simulation::handle_cs(Matrix &mObj, double &step, const int64_t &i) {
     } else if (j.indexInfo.nodeConfig_ == NodeConfig::GNDNEG) {
       b_.at(j.indexInfo.negIndex_.value()) +=
           (mObj.sourcegen.at(j.sourceIndex_).value(step));
-    } else {
+    } else if (j.indexInfo.nodeConfig_ == NodeConfig::POSNEG) {
       b_.at(j.indexInfo.posIndex_.value()) -=
           (mObj.sourcegen.at(j.sourceIndex_).value(step));
       b_.at(j.indexInfo.negIndex_.value()) +=
@@ -244,7 +244,7 @@ void Simulation::handle_resistors(Matrix &mObj, double &step) {
             temp.thermalNoise.value().value(step);
       }
       temp.pn1_ = (-x_.at(temp.indexInfo.negIndex_.value()));
-    } else {
+    } else if (nc == NodeConfig::POSNEG) {
       if (temp.thermalNoise) {
         b_.at(temp.indexInfo.posIndex_.value()) -=
             temp.thermalNoise.value().value(step);
@@ -253,6 +253,8 @@ void Simulation::handle_resistors(Matrix &mObj, double &step) {
       }
       temp.pn1_ = (x_.at(temp.indexInfo.posIndex_.value()) -
                    x_.at(temp.indexInfo.negIndex_.value()));
+    } else {
+      temp.pn1_ = 0.0;
     }
     if (atyp_ == AnalysisType::Phase) {
       // 4/3 φp1 - 1/3 φp2
@@ -297,9 +299,11 @@ void Simulation::handle_capacitors(Matrix &mObj) {
       temp.pn1_ = (x_.at(temp.indexInfo.posIndex_.value()));
     } else if (!temp.indexInfo.posIndex_ && temp.indexInfo.negIndex_) {
       temp.pn1_ = (-x_.at(temp.indexInfo.negIndex_.value()));
-    } else {
+    } else if (temp.indexInfo.posIndex_ && temp.indexInfo.negIndex_) {
       temp.pn1_ = (x_.at(temp.indexInfo.posIndex_.value()) -
                    x_.at(temp.indexInfo.negIndex_.value()));
+    } else {
+      temp.pn1_ = 0.0;
     }
     if (atyp_ == AnalysisType::Voltage) {
       // 4/3 Vp1 - 1/3 Vp2
@@ -337,7 +341,7 @@ void Simulation::handle_jj(Matrix &mObj, int64_t &i, double &step,
             temp.thermalNoise.value().value(step);
       }
       temp.pn1_ = (-x_.at(temp.indexInfo.negIndex_.value()));
-    } else {
+    } else if (temp.indexInfo.posIndex_ && temp.indexInfo.negIndex_) {
       if (temp.thermalNoise) {
         b_.at(temp.indexInfo.posIndex_.value()) -=
             temp.thermalNoise.value().value(step);
@@ -346,6 +350,8 @@ void Simulation::handle_jj(Matrix &mObj, int64_t &i, double &step,
       }
       temp.pn1_ = (x_.at(temp.indexInfo.posIndex_.value()) -
                    x_.at(temp.indexInfo.negIndex_.value()));
+    } else {
+      temp.pn1_ = 0.0;
     }
     if (i > 0) {
       if (atyp_ == AnalysisType::Voltage) {
@@ -459,9 +465,14 @@ void Simulation::handle_vs(Matrix &mObj, const int64_t &i, double &step,
         temp.pn1_ = (x_.at(temp.indexInfo.posIndex_.value()));
       } else if (nc == NodeConfig::GNDNEG) {
         temp.pn1_ = (-x_.at(temp.indexInfo.negIndex_.value()));
-      } else {
+      } else if (nc == NodeConfig::POSNEG) {
         temp.pn1_ = (x_.at(temp.indexInfo.posIndex_.value()) -
                      x_.at(temp.indexInfo.negIndex_.value()));
+      } else {
+        // This branch is only taken as a result of a GND-GND short-circuited voltage source.
+        // In this case, the matrix is singular and the program will throw an error.
+        // Without this branch, the program could crash due to std::bad_optional_access.
+        temp.pn1_ = 0.0;
       }
       // (2e/hbar)(2h/3)Vn + (4/3)φn-1 - (1/3)φn-2
       b_.at(temp.indexInfo.currentIndex_.value()) =
@@ -515,9 +526,11 @@ void Simulation::handle_ccvs(Matrix &mObj) {
         temp.pn1_ = (x_.at(temp.indexInfo.posIndex_.value()));
       } else if (!temp.indexInfo.posIndex_ && temp.indexInfo.negIndex_) {
         temp.pn1_ = (-x_.at(temp.indexInfo.negIndex_.value()));
-      } else {
+      } else if (temp.indexInfo.posIndex_ && temp.indexInfo.negIndex_) {
         temp.pn1_ = (x_.at(temp.indexInfo.posIndex_.value()) -
                      x_.at(temp.indexInfo.negIndex_.value()));
+      } else {
+        temp.pn1_ = 0.0;
       }
       b_.at(temp.indexInfo.currentIndex_.value()) =
           (4.0 / 3.0) * temp.pn1_ - (1.0 / 3.0) * temp.pn2_;
@@ -536,9 +549,11 @@ void Simulation::handle_vccs(Matrix &mObj) {
         temp.pn1_ = (x_.at(temp.posIndex2_.value()));
       } else if (!temp.posIndex2_ && temp.negIndex2_) {
         temp.pn1_ = (-x_.at(temp.negIndex2_.value()));
-      } else {
+      } else if (temp.posIndex2_ && temp.negIndex2_) {
         temp.pn1_ =
             (x_.at(temp.posIndex2_.value()) - x_.at(temp.negIndex2_.value()));
+      } else {
+        temp.pn1_ = 0.0;
       }
       b_.at(temp.indexInfo.currentIndex_.value()) =
           (4.0 / 3.0) * temp.pn1_ - (1.0 / 3.0) * temp.pn2_;
@@ -575,6 +590,8 @@ void Simulation::handle_tx(Matrix &mObj, const int64_t &i, double &step,
         } else if (nc == NodeConfig::POSNEG) {
           temp.nk_1_ = results.xVector.at(posInd.value()).value().at(i - k) -
                        results.xVector.at(negInd.value()).value().at(i - k);
+        } else {
+          temp.nk_1_ = 0.0;
         }
         // φ2n-k
         if (nc2 == NodeConfig::POSGND) {
@@ -584,6 +601,8 @@ void Simulation::handle_tx(Matrix &mObj, const int64_t &i, double &step,
         } else if (nc2 == NodeConfig::POSNEG) {
           temp.nk_2_ = results.xVector.at(posInd2.value()).value().at(i - k) -
                        results.xVector.at(negInd2.value()).value().at(i - k);
+        } else {
+          temp.nk_2_ = 0.0;
         }
         // I1n-k
         double &I1nk = results.xVector.at(curInd).value().at(i - k);
@@ -605,6 +624,8 @@ void Simulation::handle_tx(Matrix &mObj, const int64_t &i, double &step,
           temp.n1_1_ = (-x_.at(negInd.value()));
         } else if (nc == NodeConfig::POSNEG) {
           temp.n1_1_ = (x_.at(posInd.value()) - x_.at(negInd.value()));
+        } else {
+          temp.n1_1_ = 0.0;
         }
         // φ2n-1
         if (nc2 == NodeConfig::POSGND) {
@@ -613,6 +634,8 @@ void Simulation::handle_tx(Matrix &mObj, const int64_t &i, double &step,
           temp.n1_2_ = (-x_.at(negInd2.value()));
         } else if (nc2 == NodeConfig::POSNEG) {
           temp.n1_2_ = (x_.at(posInd2.value()) - x_.at(negInd2.value()));
+        } else {
+          temp.n1_2_ = 0.0;
         }
       }
       if (i >= k) {
@@ -624,6 +647,8 @@ void Simulation::handle_tx(Matrix &mObj, const int64_t &i, double &step,
         } else if (nc == NodeConfig::POSNEG) {
           temp.nk_1_ = results.xVector.at(posInd.value()).value().at(i - k) -
                        results.xVector.at(negInd.value()).value().at(i - k);
+        } else {
+          temp.nk_1_ = 0.0;
         }
         // φ2n-k
         if (nc2 == NodeConfig::POSGND) {
@@ -633,6 +658,8 @@ void Simulation::handle_tx(Matrix &mObj, const int64_t &i, double &step,
         } else if (nc2 == NodeConfig::POSNEG) {
           temp.nk_2_ = results.xVector.at(posInd2.value()).value().at(i - k) -
                        results.xVector.at(negInd2.value()).value().at(i - k);
+        } else {
+          temp.nk_2_ = 0.0;
         }
         // I1n-k
         double &I1nk = results.xVector.at(curInd).value().at(i - k);
@@ -661,6 +688,8 @@ void Simulation::handle_tx(Matrix &mObj, const int64_t &i, double &step,
             temp.nk1_1_ =
                 results.xVector.at(posInd.value()).value().at(i - k - 1) -
                 results.xVector.at(negInd.value()).value().at(i - k - 1);
+          } else {
+            temp.nk1_1_ = 0.0;
           }
           // φ2n-k-1
           if (nc2 == NodeConfig::POSGND) {
@@ -673,6 +702,8 @@ void Simulation::handle_tx(Matrix &mObj, const int64_t &i, double &step,
             temp.nk1_2_ =
                 results.xVector.at(posInd2.value()).value().at(i - k - 1) -
                 results.xVector.at(negInd2.value()).value().at(i - k - 1);
+          } else {
+            temp.nk1_2_ = 0.0;
           }
           // I1 = Z(2e/hbar)(2h/3)I2n-k + (4/3)φ1n-1 - (1/3)φ1n-2 +
           //      φ2n-k - (4/3)φ2n-k-1
@@ -698,6 +729,8 @@ void Simulation::handle_tx(Matrix &mObj, const int64_t &i, double &step,
             temp.nk1_1_ =
                 results.xVector.at(posInd.value()).value().at(i - k - 1) -
                 results.xVector.at(negInd.value()).value().at(i - k - 1);
+          } else {
+            temp.nk1_1_ = 0.0;
           }
           // φ2n-k-1
           if (nc2 == NodeConfig::POSGND) {
@@ -710,6 +743,8 @@ void Simulation::handle_tx(Matrix &mObj, const int64_t &i, double &step,
             temp.nk1_2_ =
                 results.xVector.at(posInd2.value()).value().at(i - k - 1) -
                 results.xVector.at(negInd2.value()).value().at(i - k - 1);
+          } else {
+            temp.nk1_2_ = 0.0;
           }
           // φ1n-k-2
           if (nc == NodeConfig::POSGND) {
@@ -722,6 +757,8 @@ void Simulation::handle_tx(Matrix &mObj, const int64_t &i, double &step,
             temp.nk2_1_ =
                 results.xVector.at(posInd.value()).value().at(i - k - 2) -
                 results.xVector.at(negInd.value()).value().at(i - k - 2);
+          } else {
+            temp.nk2_1_ = 0.0;
           }
           // φ2n-k-2
           if (nc2 == NodeConfig::POSGND) {
@@ -734,6 +771,8 @@ void Simulation::handle_tx(Matrix &mObj, const int64_t &i, double &step,
             temp.nk2_2_ =
                 results.xVector.at(posInd2.value()).value().at(i - k - 2) -
                 results.xVector.at(negInd2.value()).value().at(i - k - 2);
+          } else {
+            temp.nk2_2_ = 0.0;
           }
           // I1 = Z(2e/hbar)(2h/3)I2n-k + (4/3)φ1n-1 - (1/3)φ1n-2 +
           //      φ2n-k - (4/3)φ2n-k-1 + (1/3)φ2n-k-2
